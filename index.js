@@ -14,12 +14,12 @@ const vpc = new aws.ec2.Vpc("cloud_vpc",{
 const public_sub_ids = []
 const availability_zones = aws.getAvailabilityZones()
 for(let i=0;i<3;i++){
-    print(availability_zones.names[i])
-    const sub_name = "public-subnet-" + str(i)
-    const sub_cidr = "10.0." + str(i) + ".0/24"
+    // console.log(availability_zones.names[i])
+    const sub_name = "public-subnet-" + i;
+    const sub_cidr = "10.0." + i + ".0/24"
     const sub = new aws.ec2.Subnet(sub_name,{
         vpcId : vpc.id,
-        availabilityZone : availability_zones.names[i],
+        availabilityZone : availability_zones.then(available => available.names?.[i]),
         cidrBlock : sub_cidr,
         tags : {
             Name: sub_name,
@@ -31,12 +31,12 @@ for(let i=0;i<3;i++){
 
 const private_sub_ids = []
 for(let i=0;i<3;i++){
-    print(availability_zones.names[i])
-    const sub_name = "private-subnet-" + str(i)
-    const sub_cidr = "10.0." + str(i+3) + ".0/24"
+    // console.log(availability_zones.names[i])
+    const sub_name = "private-subnet-" + i;
+    const sub_cidr = "10.0." + (i+3) + ".0/24"
     const sub = new aws.ec2.Subnet(sub_name,{
         vpcId : vpc.id,
-        availabilityZone : availability_zones.names[i],
+        availabilityZone : availability_zones.then(available => available.names?.[i]),
         cidrBlock : sub_cidr,
         tags : {
             Name : sub_name,
@@ -76,4 +76,22 @@ const private_route_table = new aws.ec2.RouteTable("private-route-table", {
     }
 });
 
-export const vpcId = vpc.vpcId;
+for(let i=0;i<3;i++){
+    const association_name = "public-route-table-association" + i;
+    const route_table_association = new aws.ec2.RouteTableAssociation(association_name,{
+        subnetId : public_sub_ids[i],
+        routeTableId : public_route_table.id
+    })
+}
+    
+
+for(let i=0;i<3;i++){
+    const association_name = "private-route-table-association" + i;
+    const route_table_association = new aws.ec2.RouteTableAssociation(association_name,{
+        subnetId : private_sub_ids[i],
+        routeTableId : private_route_table.id
+    })
+}
+    
+
+// export const vpcId = vpc.vpcId;
