@@ -19,7 +19,7 @@ const public_association_name = config.require("PUBLIC_ASSOCIATION_NAME");
 
 const public_sub_ids = []
 const private_sub_ids = []
-const availability_zones = aws.getAvailabilityZones();
+const availability_zones = aws.getAvailabilityZones({state: "available"});
 const no_of_avail_zones = availability_zones.then(available => available.names?.length);
 let no_of_zones = parseInt(no_of_max_subnets)
 if(no_of_avail_zones<no_of_max_subnets){
