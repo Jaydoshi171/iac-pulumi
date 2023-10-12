@@ -131,3 +131,6 @@ dist
 
 # Pulumi config file
 Pulumi.*.yaml
+
+# some additional node files
+package-lock.json
