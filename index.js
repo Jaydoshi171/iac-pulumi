@@ -33,10 +33,9 @@ availability_zones.then(available_zones => {
     const public_sub_ids = []
     const private_sub_ids = []
     if(parseInt(no_of_avail_zones)<no_of_max_subnets){
-        console.log("in if condition");
         no_of_zones = parseInt(no_of_avail_zones);
     }
-    console.log("no_of_avail_zones: "+no_of_zones);
+    // console.log("no_of_avail_zones: "+no_of_zones);
 
     const sub_cidr_arr = sub_cidr.split(".");
     for(let i=0;i<no_of_zones;i++){
@@ -54,7 +53,6 @@ availability_zones.then(available_zones => {
         });
         public_sub_ids.push(sub.id)
     }
-
 
     for(let i=0;i<no_of_zones;i++){
         const sub_name = private_subnet_name + i;
