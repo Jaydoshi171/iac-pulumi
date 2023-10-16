@@ -117,4 +117,84 @@ availability_zones.then(available_zones => {
         })
     }
 
+    const security_grp = new aws.ec2.SecurityGroup("application security group", {
+        description: "Allow TLS inbound traffic",
+        vpcId: vpc.id,
+        ingress: [{
+            description: "TLS from VPC",
+            fromPort: 443,
+            toPort: 443,
+            protocol: "tcp",
+            cidrBlocks: ["0.0.0.0/0"],
+            ipv6CidrBlocks: ["::/0"],
+        },{
+            description: "TLS from VPC",
+            fromPort: 22,
+            toPort: 22,
+            protocol: "tcp",
+            cidrBlocks: ["0.0.0.0/0"],
+            ipv6CidrBlocks: ["::/0"],
+        },{
+            description: "TLS from VPC",
+            fromPort: 80,
+            toPort: 80,
+            protocol: "tcp",
+            cidrBlocks: ["0.0.0.0/0"],
+            ipv6CidrBlocks: ["::/0"],
+        },{
+            description: "TLS from VPC",
+            fromPort: 3000,
+            toPort: 3000,
+            protocol: "tcp",
+            cidrBlocks: ["0.0.0.0/0"],
+        }],
+        // egress: [{
+        //     fromPort: 0,
+        //     toPort: 0,
+        //     protocol: "-1",
+        //     cidrBlocks: ["0.0.0.0/0"],
+        //     ipv6CidrBlocks: ["::/0"],
+        // }],
+        tags: {
+            Name: "application security group",
+        },
+    });
+
+    const ami = aws.ec2.getAmi({
+        filters: [
+            {
+                name: "name",
+                values: ["csye6225_*"],
+            },
+            {
+                name: "root-device-type",
+                values: ["ebs"],
+            },
+            {
+                name: "virtualization-type",
+                values: ["hvm"],
+            },
+        ],
+        mostRecent: true,
+        owners: ["192072421737"],
+    });
+
+    ami.then(i => console.log(i.id))
+    const instance = new aws.ec2.Instance("webapp2", {
+        ami: ami.then(i => i.id),
+        instanceType: "t2.micro",
+        subnetId: public_sub_ids[0],
+        keyName: "awsKey",
+        associatePublicIpAddress: true,
+        vpcSecurityGroupIds: [
+            security_grp.id,
+        ],
+        userData: `
+        #!/bin/bash
+        cd /home/admin
+        sudo chmod -R 774 opt
+        cd opt
+        npm start
+    `,
+    });
 });
