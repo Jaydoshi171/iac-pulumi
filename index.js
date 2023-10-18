@@ -22,25 +22,22 @@ const vpc = new aws.ec2.Vpc(vpc_name,{
     cidrBlock:vpc_cidr,
     tags : {
         Name: vpc_name,
-        assignment: "4",
     }
 });
 
 availability_zones.then(available_zones => {
 
     let no_of_avail_zones = available_zones.names?.length;
-    let no_of_zones =  3;
+    let no_of_zones =  no_of_max_subnets;
     const public_sub_ids = []
     const private_sub_ids = []
     if(parseInt(no_of_avail_zones)<no_of_max_subnets){
         no_of_zones = parseInt(no_of_avail_zones);
     }
-    // console.log("no_of_avail_zones: "+no_of_zones);
 
     const sub_cidr_arr = sub_cidr.split(".");
     for(let i=0;i<no_of_zones;i++){
         const sub_name = public_subnet_name + i;
-
         const sub_cidr_val = sub_cidr_arr[0] + "." + sub_cidr_arr[1] + "." + i + "." + sub_cidr_arr[3];
         const sub = new aws.ec2.Subnet(sub_name,{
             vpcId : vpc.id,
@@ -48,7 +45,6 @@ availability_zones.then(available_zones => {
             cidrBlock : sub_cidr_val,
             tags : {
                 Name: sub_name,
-                assignment: "4",
             }
         });
         public_sub_ids.push(sub.id)
@@ -64,7 +60,6 @@ availability_zones.then(available_zones => {
             cidrBlock : sub_cidr_val,
             tags : {
                 Name : sub_name,
-                assignment : "4",
             }
         } )
         private_sub_ids.push(sub.id)
@@ -74,7 +69,6 @@ availability_zones.then(available_zones => {
         vpcId : vpc.id,
         tags : {
             Name: internet_gateway_name,
-            assignment : "4",
         }
     });
 
@@ -88,7 +82,6 @@ availability_zones.then(available_zones => {
         ],
         tags : {
             Name: public_route_table_name,
-            assignment : "4",
         }
     })
 
@@ -96,7 +89,6 @@ availability_zones.then(available_zones => {
         vpcId : vpc.id,
         tags : {
             Name : private_route_table_name,
-            assignment : "4",
         }
     });
 
@@ -117,4 +109,60 @@ availability_zones.then(available_zones => {
         })
     }
 
+    const security_grp = new aws.ec2.SecurityGroup(config.require("SECURITY_GROUP_NAME"), {
+        vpcId: vpc.id,
+        ingress: [{
+            fromPort: config.require("HTTPS_PORT"),
+            toPort: config.require("HTTPS_PORT"),
+            protocol: config.require("PROTOCOL"),
+            cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+            ipv6CidrBlocks: [config.require("ROUTE_TO_INTERNET_IPV6")],
+        },{
+            fromPort: config.require("HTTP_PORT"),
+            toPort: config.require("HTTP_PORT"),
+            protocol: config.require("PROTOCOL"),
+            cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+            ipv6CidrBlocks: [config.require("ROUTE_TO_INTERNET_IPV6")],
+        },{
+            fromPort: config.require("SSH_PORT"),
+            toPort: config.require("SSH_PORT"),
+            protocol: config.require("PROTOCOL"),
+            cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+            ipv6CidrBlocks: [config.require("ROUTE_TO_INTERNET_IPV6")],
+        },{
+            fromPort: config.require("APPLICATION_PORT"),
+            toPort: config.require("APPLICATION_PORT"),
+            protocol: config.require("PROTOCOL"),
+            cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+        }],
+        tags: {
+            Name: config.require("SECURITY_GROUP_NAME"),
+        },
+    });
+
+    const ami = aws.ec2.getAmi({
+        filters: [
+            {
+                name: config.require("AMI_FILTER_KEY_1"),
+                values: [config.require("AMI_FILTER_VALUE_1")],
+            },
+        ],
+        mostRecent: true,
+        owners: [config.require("AMI_OWNER")],
+    });
+
+    ami.then(i => console.log(i.id))
+    const instance = new aws.ec2.Instance(config.require("EC2_INSTANCE_NAME"), {
+        ami: ami.then(i => i.id),
+        instanceType: config.require("EC2_INSTANCE_TYPE"),
+        subnetId: public_sub_ids[0],
+        keyName: config.require("KEY_PAIR_NAME"),
+        associatePublicIpAddress: true,
+        vpcSecurityGroupIds: [
+            security_grp.id,
+        ],
+        tags: {
+            Name: config.require("EC2_INSTANCE_NAME"),
+        },
+    });
 });
