@@ -28,7 +28,7 @@ const vpc = new aws.ec2.Vpc(vpc_name,{
 availability_zones.then(available_zones => {
 
     let no_of_avail_zones = available_zones.names?.length;
-    let no_of_zones =  3;
+    let no_of_zones =  no_of_max_subnets;
     const public_sub_ids = []
     const private_sub_ids = []
     if(parseInt(no_of_avail_zones)<no_of_max_subnets){
@@ -164,12 +164,5 @@ availability_zones.then(available_zones => {
         tags: {
             Name: config.require("EC2_INSTANCE_NAME"),
         },
-        userData:`
-        #!/bin/bash
-        cd /home/admin
-        sudo chmod -R 774 opt
-        cd opt
-        npm start
-    `,
     });
 });
