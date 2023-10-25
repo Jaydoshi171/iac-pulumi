@@ -158,7 +158,7 @@ availability_zones.then(available_zones => {
         }],
         egress: [
             {
-                protocol: config.require("PROTOCOL"),
+                protocol: -1,
                 fromPort: config.require("EGRESS_PORT"),
                 toPort: config.require("EGRESS_PORT"),
                 security_groups: [security_grp.id],
@@ -189,7 +189,7 @@ availability_zones.then(available_zones => {
 
     const application_rds_instance = new aws.rds.Instance(config.require("RDS_INSTANCE_NAME"), {
         allocatedStorage: config.require("RDS_ALLOCATED_STORAGE"),
-        storageType: config.require("SUBNET_GROUP_NAME"),
+        storageType: config.require("RDS_STORAGE_TYPE"),
         engine: config.require("DATABASE_DIALECT"),
         engineVersion: config.require("RDS_ENGINE_VERSION"),
         skipFinalSnapshot: config.require("RDS_SKIP_FINAL_SNAPSHOT"),
@@ -200,7 +200,7 @@ availability_zones.then(available_zones => {
         password: config.require("DATABASE_PASSWORD"),
         parameterGroupName: rds_param_name.name,
         dbSubnetGroupName: rds_private_subnet,
-        vpcSecurityGroupIds: [db_security_grp.id, security_grp.id],
+        vpcSecurityGroupIds: [db_security_grp.id],
         publiclyAccessible: config.require("RDS_MULTI_AZ"),
         tags: {
             Name:config.require("RDS_INSTANCE_NAME"),
@@ -231,16 +231,15 @@ availability_zones.then(available_zones => {
             keyName: config.require("KEY_PAIR_NAME"),
             associatePublicIpAddress: true,
             vpcSecurityGroupIds: [
-                security_grp.id,
-                db_security_grp.id,
+                security_grp.id
             ],
             userData: pulumi.interpolate`#!/bin/bash
-                echo "port=${config.require("APPLICATION_PORT")}" >> /home/admin/opt/.env
-                echo "host=${rds_endpoint}" >> /home/admin/opt/.env
-                echo "dialect=${config.require("DATABASE_DIALECT")}" >> /home/admin/opt/.env
-                echo "user=${config.require("DATABASE_USER")}" >> /home/admin/opt/.env
-                echo "password=${config.require("DATABASE_PASSWORD")}" >> /home/admin/opt/.env
-                echo "database=${config.require("DATABASE_NAME")}" >> /home/admin/opt/.env
+                echo "port=${config.require("APPLICATION_PORT")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+                echo "host=${rds_endpoint}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+                echo "dialect=${config.require("DATABASE_DIALECT")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+                echo "user=${config.require("DATABASE_USER")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+                echo "password=${config.require("DATABASE_PASSWORD")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+                echo "database=${config.require("DATABASE_NAME")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
             `,
         });
     });
