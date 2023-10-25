@@ -135,8 +135,75 @@ availability_zones.then(available_zones => {
             protocol: config.require("PROTOCOL"),
             cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
         }],
+        egress: [
+            {
+                protocol: config.require("PROTOCOL"),
+                fromPort: config.require("DATABASE_PORT"),
+                toPort: config.require("DATABASE_PORT"),
+                cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+            },
+        ],
         tags: {
             Name: config.require("SECURITY_GROUP_NAME"),
+        },
+    });
+
+    const db_security_grp = new aws.ec2.SecurityGroup(config.require("DATABASE_SECURITY_GROUP_NAME"), {
+        vpcId: vpc.id,
+        ingress: [{
+            fromPort: config.require("DATABASE_PORT"),
+            toPort: config.require("DATABASE_PORT"),
+            protocol: config.require("PROTOCOL"),
+            securityGroups: [security_grp.id]
+        }],
+        egress: [
+            {
+                protocol: config.require("PROTOCOL"),
+                fromPort: config.require("EGRESS_PORT"),
+                toPort: config.require("EGRESS_PORT"),
+                security_groups: [security_grp.id],
+                cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+            },
+        ],
+        tags: {
+            Name: config.require("DATABASE_SECURITY_GROUP_NAME"),
+        },
+    });
+
+    const rds_param_name = new aws.rds.ParameterGroup(config.require("RDS_PARAMETER_NAME"), {
+        family: config.require("RDS_FAMILY"),
+        vpcId: vpc.id,
+        // parameters: [{
+        //     name: 'character_set_server',
+        //     value: 'utf8'
+        // }]
+    });
+
+    const privateSubnetID = private_sub_ids.map(subnet => subnet);
+    const rds_private_subnet = new aws.rds.SubnetGroup(config.require("SUBNET_GROUP_NAME"), {
+        subnetIds: privateSubnetID,
+        tags: {
+            Name: config.require("SUBNET_GROUP_NAME"),
+        },
+    });
+
+    const application_rds_instance = new aws.rds.Instance(config.require("RDS_INSTANCE_NAME"), {
+        allocatedStorage: config.require("RDS_ALLOCATED_STORAGE"),
+        storageType: config.require("SUBNET_GROUP_NAME"),
+        engine: config.require("DATABASE_DIALECT"),
+        engineVersion: config.require("RDS_ENGINE_VERSION"),
+        skipFinalSnapshot: config.require("RDS_SKIP_FINAL_SNAPSHOT"),
+        instanceClass: config.require("RDS_INSTANCE_CLASS"),
+        multiAz: config.require("RDS_MULTI_AZ"),
+        dbName: config.require("DATABASE_NAME"),
+        username: config.require("DATABASE_USER"),
+        password: config.require("DATABASE_PASSWORD"),
+        parameterGroupName: rds_param_name.name,
+        dbSubnetGroupName: rds_private_subnet,
+        vpcSecurityGroupIds: [db_security_grp.id, security_grp.id],
+        publiclyAccessible: config.require("RDS_MULTI_AZ"),
+        tags: {
+            Name:config.require("RDS_INSTANCE_NAME"),
         },
     });
 
@@ -152,17 +219,29 @@ availability_zones.then(available_zones => {
     });
 
     ami.then(i => console.log(i.id))
-    const instance = new aws.ec2.Instance(config.require("EC2_INSTANCE_NAME"), {
-        ami: ami.then(i => i.id),
-        instanceType: config.require("EC2_INSTANCE_TYPE"),
-        subnetId: public_sub_ids[0],
-        keyName: config.require("KEY_PAIR_NAME"),
-        associatePublicIpAddress: true,
-        vpcSecurityGroupIds: [
-            security_grp.id,
-        ],
-        tags: {
-            Name: config.require("EC2_INSTANCE_NAME"),
-        },
+
+    application_rds_instance.endpoint.apply(endpoint => {
+        
+        const rds_endpoint = endpoint.split(":")[0]
+        console.log(rds_endpoint);
+        const instance = new aws.ec2.Instance(config.require("EC2_INSTANCE_NAME"), {
+            ami: ami.then(i => i.id),
+            instanceType: config.require("EC2_INSTANCE_TYPE"),
+            subnetId: public_sub_ids[0],
+            keyName: config.require("KEY_PAIR_NAME"),
+            associatePublicIpAddress: true,
+            vpcSecurityGroupIds: [
+                security_grp.id,
+                db_security_grp.id,
+            ],
+            userData: pulumi.interpolate`#!/bin/bash
+                echo "port=${config.require("APPLICATION_PORT")}" >> /home/admin/opt/.env
+                echo "host=${rds_endpoint}" >> /home/admin/opt/.env
+                echo "dialect=${config.require("DATABASE_DIALECT")}" >> /home/admin/opt/.env
+                echo "user=${config.require("DATABASE_USER")}" >> /home/admin/opt/.env
+                echo "password=${config.require("DATABASE_PASSWORD")}" >> /home/admin/opt/.env
+                echo "database=${config.require("DATABASE_NAME")}" >> /home/admin/opt/.env
+            `,
+        });
     });
 });
