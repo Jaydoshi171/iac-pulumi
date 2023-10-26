@@ -233,6 +233,14 @@ availability_zones.then(available_zones => {
             vpcSecurityGroupIds: [
                 security_grp.id
             ],
+            ebsBlockDevices: [
+                {
+                    deviceName: config.require("EC2_DEVICE_NAME"),
+                    deleteOnTermination: config.require("EC2_DELETE_ON_TERMINATION"),
+                    volumeSize: config.require("EC2_VOLUME_SIZE"),
+                    volumeType: config.require("EC2_VOLUME_TYPE")
+                }
+            ],
             userData: pulumi.interpolate`#!/bin/bash
                 echo "port=${config.require("APPLICATION_PORT")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
                 echo "host=${rds_endpoint}" >> ${config.require("APPLICATION_ENV_LOCATION")}
