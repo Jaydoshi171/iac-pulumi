@@ -158,7 +158,7 @@ availability_zones.then(available_zones => {
         }],
         egress: [
             {
-                protocol: -1,
+                protocol: config.require("EGRESS_PROTOCOL"),
                 fromPort: config.require("EGRESS_PORT"),
                 toPort: config.require("EGRESS_PORT"),
                 security_groups: [security_grp.id],
