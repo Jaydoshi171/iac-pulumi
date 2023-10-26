@@ -173,10 +173,10 @@ availability_zones.then(available_zones => {
     const rds_param_name = new aws.rds.ParameterGroup(config.require("RDS_PARAMETER_NAME"), {
         family: config.require("RDS_FAMILY"),
         vpcId: vpc.id,
-        // parameters: [{
-        //     name: 'character_set_server',
-        //     value: 'utf8'
-        // }]
+        parameters: [{
+            name: config.require("PARAMETER_KEY"),
+            value: config.require("PARAMETER_VALUE")
+        }]
     });
 
     const privateSubnetID = private_sub_ids.map(subnet => subnet);
