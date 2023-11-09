@@ -142,6 +142,13 @@ availability_zones.then(available_zones => {
                 toPort: config.require("DATABASE_PORT"),
                 cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
             },
+            {
+                protocol: config.require("EGRESS_PROTOCOL"),
+                fromPort: config.require("EGRESS_PORT"),
+                toPort: config.require("EGRESS_PORT"),
+                // security_groups: [security_grp.id],
+                cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+            },
         ],
         tags: {
             Name: config.require("SECURITY_GROUP_NAME"),
@@ -224,12 +231,40 @@ availability_zones.then(available_zones => {
         
         const rds_endpoint = endpoint.split(":")[0]
         console.log(rds_endpoint);
+
+        const ec2_role = new aws.iam.Role(config.require("CLOUD_WATCH_ROLE"), {
+            assumeRolePolicy: JSON.stringify({
+                Version: config.require("ROLE_VERSION"),
+                Statement: [{
+                    Action: config.require("ROLE_ACTION"),
+                    Effect: config.require("ROLE_EFFECT"),
+                    Sid: "",
+                    Principal: {
+                        Service: config.require("ROLE_SERVICE"),
+                    },
+                }],
+            }),
+            tags: {
+                Name: config.require("CLOUD_WATCH_ROLE"),
+            },
+        });
+
+        const policy = new aws.iam.PolicyAttachment(config.require("POLICY_ATTACHMENT"), {
+            policyArn: config.require("POLICY_ARN"),
+            roles: [ec2_role.name],
+        });
+
+        const roleAttachment = new aws.iam.InstanceProfile(config.require("INSTANCE_PROFILE_NAME"), {
+            role: ec2_role.name,
+        });
+
         const instance = new aws.ec2.Instance(config.require("EC2_INSTANCE_NAME"), {
             ami: ami.then(i => i.id),
             instanceType: config.require("EC2_INSTANCE_TYPE"),
             subnetId: public_sub_ids[0],
             keyName: config.require("KEY_PAIR_NAME"),
             associatePublicIpAddress: true,
+            iamInstanceProfile: roleAttachment.name,
             vpcSecurityGroupIds: [
                 security_grp.id
             ],
@@ -248,7 +283,27 @@ availability_zones.then(available_zones => {
                 echo "user=${config.require("DATABASE_USER")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
                 echo "password=${config.require("DATABASE_PASSWORD")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
                 echo "database=${config.require("DATABASE_NAME")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+                sudo chown -R ${config.require("INSTANCE_APPLICATION_USER")} /opt/${config.require("INSTANCE_APPLICATION_USER")}
+                sudo chgrp -R ${config.require("INSTANCE_APPLICATION_USER")} /opt/${config.require("INSTANCE_APPLICATION_USER")}
+                sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/${config.require("INSTANCE_APPLICATION_USER")}/config.json -s
+                sudo systemctl restart amazon-cloudwatch-agent
             `,
         });
+
+        const dns_zone = aws.route53.getZone({
+            name: config.require("DNS_NAME"),
+        });
+
+        const route53_record = new aws.route53.Record(config.require("ROUTE_53_RECORD_NAME"), {
+            zoneId: dns_zone.then(selected => selected.zoneId),
+            name: config.require("DNS_NAME"),
+            type: config.require("RECORD_TYPE"),
+            ttl: config.require("RECORD_TTL"), 
+            records: [instance.publicIp],
+        });
+
+
     });
+
+
 });
