@@ -15,7 +15,6 @@ const public_route_table_name = config.require("PUBLIC_ROUTE_TABLE_NAME");
 const route_to_internet = config.require("ROUTE_TO_INTERNET");
 const private_association_name = config.require("PRIVATE_ASSOCIATION_NAME");
 const public_association_name = config.require("PUBLIC_ASSOCIATION_NAME");
-
 const availability_zones = aws.getAvailabilityZones({state: "available"});
 
 const vpc = new aws.ec2.Vpc(vpc_name,{
@@ -61,7 +60,7 @@ availability_zones.then(available_zones => {
             tags : {
                 Name : sub_name,
             }
-        } )
+        })
         private_sub_ids.push(sub.id)
     }
 
@@ -109,7 +108,7 @@ availability_zones.then(available_zones => {
         })
     }
 
-    const security_grp = new aws.ec2.SecurityGroup(config.require("SECURITY_GROUP_NAME"), {
+    const load_bal_sec_grp = new aws.ec2.SecurityGroup(config.require("LOAD_BALANCER_SECURITY_GROUP"), {
         vpcId: vpc.id,
         ingress: [{
             fromPort: config.require("HTTPS_PORT"),
@@ -123,7 +122,24 @@ availability_zones.then(available_zones => {
             protocol: config.require("PROTOCOL"),
             cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
             ipv6CidrBlocks: [config.require("ROUTE_TO_INTERNET_IPV6")],
-        },{
+        }],
+        egress: [
+            {
+                protocol: config.require("EGRESS_PROTOCOL"),
+                fromPort: config.require("EGRESS_PORT"),
+                toPort: config.require("EGRESS_PORT"),
+                // security_groups: [security_grp_id],
+                cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+            },
+        ],
+        tags: {
+            Name: "cloud-load-balancer",
+        },
+    });
+
+    const security_grp = new aws.ec2.SecurityGroup(config.require("SECURITY_GROUP_NAME"), {
+        vpcId: vpc.id,
+        ingress: [{
             fromPort: config.require("SSH_PORT"),
             toPort: config.require("SSH_PORT"),
             protocol: config.require("PROTOCOL"),
@@ -133,7 +149,7 @@ availability_zones.then(available_zones => {
             fromPort: config.require("APPLICATION_PORT"),
             toPort: config.require("APPLICATION_PORT"),
             protocol: config.require("PROTOCOL"),
-            cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
+            security_groups: [load_bal_sec_grp.id],
         }],
         egress: [
             {
@@ -146,7 +162,6 @@ availability_zones.then(available_zones => {
                 protocol: config.require("EGRESS_PROTOCOL"),
                 fromPort: config.require("EGRESS_PORT"),
                 toPort: config.require("EGRESS_PORT"),
-                // security_groups: [security_grp.id],
                 cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
             },
         ],
@@ -177,6 +192,7 @@ availability_zones.then(available_zones => {
         },
     });
 
+
     const rds_param_name = new aws.rds.ParameterGroup(config.require("RDS_PARAMETER_NAME"), {
         family: config.require("RDS_FAMILY"),
         vpcId: vpc.id,
@@ -193,6 +209,10 @@ availability_zones.then(available_zones => {
             Name: config.require("SUBNET_GROUP_NAME"),
         },
     });
+
+    // const log_group = new aws.cloudwatch.LogGroup("csye6225", {tags: {
+    //     Name: "csye6225",
+    // }});
 
     const application_rds_instance = new aws.rds.Instance(config.require("RDS_INSTANCE_NAME"), {
         allocatedStorage: config.require("RDS_ALLOCATED_STORAGE"),
@@ -224,9 +244,7 @@ availability_zones.then(available_zones => {
         mostRecent: true,
         owners: [config.require("AMI_OWNER")],
     });
-
     ami.then(i => console.log(i.id))
-
     application_rds_instance.endpoint.apply(endpoint => {
         
         const rds_endpoint = endpoint.split(":")[0]
@@ -258,52 +276,150 @@ availability_zones.then(available_zones => {
             role: ec2_role.name,
         });
 
-        const instance = new aws.ec2.Instance(config.require("EC2_INSTANCE_NAME"), {
-            ami: ami.then(i => i.id),
-            instanceType: config.require("EC2_INSTANCE_TYPE"),
-            subnetId: public_sub_ids[0],
-            keyName: config.require("KEY_PAIR_NAME"),
-            associatePublicIpAddress: true,
-            iamInstanceProfile: roleAttachment.name,
-            vpcSecurityGroupIds: [
-                security_grp.id
-            ],
-            ebsBlockDevices: [
-                {
-                    deviceName: config.require("EC2_DEVICE_NAME"),
-                    deleteOnTermination: config.require("EC2_DELETE_ON_TERMINATION"),
-                    volumeSize: config.require("EC2_VOLUME_SIZE"),
-                    volumeType: config.require("EC2_VOLUME_TYPE")
-                }
-            ],
-            userData: pulumi.interpolate`#!/bin/bash
-                echo "port=${config.require("APPLICATION_PORT")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
-                echo "host=${rds_endpoint}" >> ${config.require("APPLICATION_ENV_LOCATION")}
-                echo "dialect=${config.require("DATABASE_DIALECT")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
-                echo "user=${config.require("DATABASE_USER")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
-                echo "password=${config.require("DATABASE_PASSWORD")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
-                echo "database=${config.require("DATABASE_NAME")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
-                sudo chown -R ${config.require("INSTANCE_APPLICATION_USER")} /opt/${config.require("INSTANCE_APPLICATION_USER")}
-                sudo chgrp -R ${config.require("INSTANCE_APPLICATION_USER")} /opt/${config.require("INSTANCE_APPLICATION_USER")}
-                sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/${config.require("INSTANCE_APPLICATION_USER")}/config.json -s
-                sudo systemctl restart amazon-cloudwatch-agent
-            `,
-        });
+        const userData = `#!/bin/bash
+        echo "port=${config.require("APPLICATION_PORT")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+        echo "host=${rds_endpoint}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+        echo "dialect=${config.require("DATABASE_DIALECT")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+        echo "user=${config.require("DATABASE_USER")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+        echo "password=${config.require("DATABASE_PASSWORD")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+        echo "database=${config.require("DATABASE_NAME")}" >> ${config.require("APPLICATION_ENV_LOCATION")}
+        sudo systemctl restart amazon-cloudwatch-agent
+    `
 
-        const dns_zone = aws.route53.getZone({
-            name: config.require("DNS_NAME"),
-        });
+    const ec2_launch_Template = new aws.ec2.LaunchTemplate( config.require("LAUNCH_TEMPLATE_NAME"), {
+        blockDeviceMappings: [{
+            deviceName: config.require("EC2_DEVICE_NAME"),
+            ebs: {
+                volumeSize: config.require("EC2_VOLUME_SIZE"),
+                deleteOnTermination: config.require("EC2_DELETE_ON_TERMINATION"),
+                volumeType: config.require("EC2_VOLUME_TYPE")
+            },
+        }],
+        instanceType: config.require("EC2_INSTANCE_TYPE"),
+        keyName: config.require("KEY_PAIR_NAME"),
+        iamInstanceProfile: {name: roleAttachment.name},
+        imageId: ami.then(i => i.id),
+        networkInterfaces: [{
+            associatePublicIpAddress: "true",
+            securityGroups: [security_grp.id],
+        }],
+        namePrefix:  config.require("LAUNCH_TEMPLATE_NAME_PREFIX"),
+        userData: Buffer.from(userData).toString('base64'),
+    })
 
-        const route53_record = new aws.route53.Record(config.require("ROUTE_53_RECORD_NAME"), {
-            zoneId: dns_zone.then(selected => selected.zoneId),
-            name: config.require("DNS_NAME"),
-            type: config.require("RECORD_TYPE"),
-            ttl: config.require("RECORD_TTL"), 
-            records: [instance.publicIp],
-        });
-
-
+    const targetGroup = new aws.lb.TargetGroup(config.require("TARGET_GROUP_NAME"), {
+        port: config.require("TARGET_GROUP_PORT"),
+        protocol: config.require("TARGET_GROUP_PROTOCOL"),
+        targetType: config.require("TARGET_GROUP_TYPE"),
+        vpcId: vpc.id,
+        healthCheck: {
+            path: "/healthz", 
+            interval: 30, 
+            timeout: 10, 
+            healthyThreshold: 3, 
+            unhealthyThreshold: 2, 
+            matcher: "200",
+        },
     });
 
+    const ec2_asg = new aws.autoscaling.Group(config.require("AUTO_SCALING_GROUP_NAME"), {
+        vpcZoneIdentifiers: public_sub_ids,
+        desiredCapacity: config.require("AUTO_SCALING_GROUP_DESIRED_CAPACITY"),
+        minSize: config.require("AUTO_SCALING_GROUP_MINSIZE"),
+        maxSize: config.require("AUTO_SCALING_GROUP_MAXSIZE"),
+        targetGroupArns: [targetGroup.arn],
+        launchTemplate: {
+            id: ec2_launch_Template.id,
+        },
+        tags: [
+            {
+                key: "Name",
+                value: config.require("AUTO_SCALING_GROUP_NAME"),
+                propagateAtLaunch: false,
+            },
+            {
+                key: config.require("ASG_TAG_KEY"),
+                value: config.require("ASG_TAG_VALUE"),
+                propagateAtLaunch: true,
+            },
+        ],
+    });
 
+    const scaleUpPolicy = new aws.autoscaling.Policy(config.require("AUTO_SCALING_POLICY_UP_NAME"), {
+        adjustmentType: config.require("AUTO_SCALING_POLICY_ADJUSTMENT_TYPE"),
+        scalingAdjustment: config.require("AUTO_SCALING_POLICY_SCALING_UP_ADJUSTMENT"),
+        cooldown: config.require("AUTO_SCALING_POLICY_COOLDOWN"),
+        policyType: config.require("AUTO_SCALING_POLICY_POLICY_TYPE"),
+        autoscalingGroupName: ec2_asg.name,
+    });
+    
+    const scaleUpCondition = new aws.cloudwatch.MetricAlarm(config.require("AUTO_SCALING_POLICY_ALARM_UP_NAME"), {
+        metricName: config.require("AUTO_SCALING_POLICY_METRICS_NAME"),
+        namespace: config.require("AUTO_SCALING_POLICY_NAMESPACE"),
+        statistic: config.require("AUTO_SCALING_POLICY_STATISTICS"),
+        period: config.require("AUTO_SCALING_POLICY_PERIOD"),
+        evaluationPeriods: config.require("AUTO_SCALING_POLICY_EVALUATION_PERIODS"),
+        comparisonOperator: config.require("AUTO_SCALING_POLICY_COMPARISON_OPERATOR_UP"),
+        threshold: config.require("AUTO_SCALING_POLICY_THRESHOLD_UP"),
+        dimensions: {
+            AutoScalingGroupName: ec2_asg.name,
+        },
+        alarmActions: [scaleUpPolicy.arn],
+    });
+    
+    const scaleDownPolicy = new aws.autoscaling.Policy(config.require("AUTO_SCALING_POLICY_DOWN_NAME"), {
+        adjustmentType: config.require("AUTO_SCALING_POLICY_ADJUSTMENT_TYPE"),
+        scalingAdjustment: config.require("AUTO_SCALING_POLICY_SCALING_DOWN_ADJUSTMENT"),
+        cooldown: config.require("AUTO_SCALING_POLICY_COOLDOWN"),
+        policyType: config.require("AUTO_SCALING_POLICY_POLICY_TYPE"),
+        autoscalingGroupName: ec2_asg.name,
+    });
+    
+    const scaleDownCondition = new aws.cloudwatch.MetricAlarm(config.require("AUTO_SCALING_POLICY_ALARM_DOWN_NAME"), {
+        metricName: config.require("AUTO_SCALING_POLICY_METRICS_NAME"),
+        namespace: config.require("AUTO_SCALING_POLICY_NAMESPACE"),
+        statistic: config.require("AUTO_SCALING_POLICY_STATISTICS"),
+        period: config.require("AUTO_SCALING_POLICY_PERIOD"),
+        evaluationPeriods: config.require("AUTO_SCALING_POLICY_EVALUATION_PERIODS"),
+        comparisonOperator: config.require("AUTO_SCALING_POLICY_COMPARISON_OPERATOR_DOWN"),
+        threshold:config.require("AUTO_SCALING_POLICY_THRESHOLD_DOWN"),
+        dimensions: {
+            AutoScalingGroupName: ec2_asg.name,
+        },
+        alarmActions: [scaleDownPolicy.arn],
+    });
+
+    const alb = new aws.lb.LoadBalancer(config.require("LOAD_BALANCER_NAME"), {
+        loadBalancerType: config.require("LOAD_BALANCER_TYPE"),
+        securityGroups: [load_bal_sec_grp.id],
+        subnets: public_sub_ids,
+        // enableHttp2: true
+    });
+        
+    const listener = new aws.lb.Listener(config.require("LISTENER_NAME"), {
+        loadBalancerArn: alb.arn,
+        port: config.require("LISTENER_PORT"),
+        protocol: config.require("LISTENER_PROTOCOL"),
+        defaultActions: [{
+            type: config.require("LISTENER_ACTION_TYPE"),
+            targetGroupArn: targetGroup.arn,
+        }],
+    });
+
+    const dns_zone = aws.route53.getZone({
+        name: config.require("DNS_NAME"),
+    });
+
+    const route53_record = new aws.route53.Record(config.require("ROUTE_53_RECORD_NAME"), {
+        zoneId: dns_zone.then(selected => selected.zoneId),
+        name: config.require("DNS_NAME"),
+        type: config.require("RECORD_TYPE"),
+        aliases: [{
+            name: alb.dnsName,
+            zoneId: alb.zoneId,
+            evaluateTargetHealth: true
+        }],
+    });
+
+});
 });
