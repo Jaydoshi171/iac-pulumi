@@ -134,3 +134,6 @@ Pulumi.*.yaml
 
 # some additional node files
 package-lock.json
+
+# zip file
+.zip
