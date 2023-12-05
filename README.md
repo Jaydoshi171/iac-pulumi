@@ -19,6 +19,25 @@ This project is used to create AWS architecture using Pulumi. We are creating VP
 6. Create a public route in the public route table created above with the destination CIDR block 0.0.0.0/0 and the internet gateway created above as the target.
 
 ## Prerequisites
+# Import SSL Certificate to AWS Certificate Manager
+
+Follow the steps below to import your SSL certificate into AWS Certificate Manager (ACM).
+
+## Prerequisites
+1. Ensure you have the AWS CLI installed and configured with the necessary credentials.
+2. Have your SSL certificate files ready:
+   - Certificate file: `/Users/jaydoshi/ssl/demo_jaydoshii_me.crt`
+   - Private key file: `/Users/jaydoshi/ssl/jayPrivateKey.pem`
+   - Certificate chain file: `/Users/jaydoshi/ssl/demo_jaydoshii_me.ca-bundle`
+
+## Import Certificate Command
+
+Use the following AWS CLI command to import the SSL certificate into ACM:
+
+aws acm import-certificate \
+  --certificate fileb:///Users/jaydoshi/ssl/demo_jaydoshii_me.crt
+  --private-key fileb:///Users/jaydoshi/ssl/jayPrivateKey.pem \
+  --certificate-chain fileb:///Users/jaydoshi/ssl/demo_jaydoshii_me.ca-bundle
 
 - **Pulumi CLI**: If you haven't already installed Pulumi, you can do so via Homebrew (on macOS or Linux) using the following command:
 

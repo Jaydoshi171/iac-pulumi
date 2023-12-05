@@ -117,12 +117,6 @@ availability_zones.then(available_zones => {
             protocol: config.require("PROTOCOL"),
             cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
             ipv6CidrBlocks: [config.require("ROUTE_TO_INTERNET_IPV6")],
-        },{
-            fromPort: config.require("HTTP_PORT"),
-            toPort: config.require("HTTP_PORT"),
-            protocol: config.require("PROTOCOL"),
-            cidrBlocks: [config.require("ROUTE_TO_INTERNET")],
-            ipv6CidrBlocks: [config.require("ROUTE_TO_INTERNET_IPV6")],
         }],
         egress: [
             {
@@ -389,6 +383,7 @@ availability_zones.then(available_zones => {
             `
         
             const ec2_launch_Template = new aws.ec2.LaunchTemplate( config.require("LAUNCH_TEMPLATE_NAME"), {
+                name: config.require("LAUNCH_TEMPLATE_NAME"),
                 blockDeviceMappings: [{
                     deviceName: config.require("EC2_DEVICE_NAME"),
                     ebs: {
@@ -400,13 +395,17 @@ availability_zones.then(available_zones => {
                 instanceType: config.require("EC2_INSTANCE_TYPE"),
                 keyName: config.require("KEY_PAIR_NAME"),
                 iamInstanceProfile: {name: roleAttachment.name},
+                updateDefaultVersion: "true",
                 imageId: ami.then(i => i.id),
                 networkInterfaces: [{
                     associatePublicIpAddress: "true",
                     securityGroups: [security_grp.id],
                 }],
-                namePrefix:  config.require("LAUNCH_TEMPLATE_NAME_PREFIX"),
+                // namePrefix:  config.require("LAUNCH_TEMPLATE_NAME_PREFIX"),
                 userData: Buffer.from(userData).toString('base64'),
+                // tags: {
+                //     Name: config.require("LAUNCH_TEMPLATE_NAME"),
+                // },
             })
         
             const targetGroup = new aws.lb.TargetGroup(config.require("TARGET_GROUP_NAME"), {
@@ -425,6 +424,7 @@ availability_zones.then(available_zones => {
             });
         
             const ec2_asg = new aws.autoscaling.Group(config.require("AUTO_SCALING_GROUP_NAME"), {
+                name: config.require("AUTO_SCALING_GROUP_NAME"),
                 vpcZoneIdentifiers: public_sub_ids,
                 desiredCapacity: config.require("AUTO_SCALING_GROUP_DESIRED_CAPACITY"),
                 minSize: config.require("AUTO_SCALING_GROUP_MINSIZE"),
@@ -432,6 +432,7 @@ availability_zones.then(available_zones => {
                 targetGroupArns: [targetGroup.arn],
                 launchTemplate: {
                     id: ec2_launch_Template.id,
+                    version: "$Latest"
                 },
                 tags: [
                     {
@@ -505,6 +506,8 @@ availability_zones.then(available_zones => {
                     type: config.require("LISTENER_ACTION_TYPE"),
                     targetGroupArn: targetGroup.arn,
                 }],
+                sslPolicy: config.require("SSL_POLICY"),
+                certificateArn: config.require("SSL_CERTIFICATION_ARN"),
             });
         
             const dns_zone = aws.route53.getZone({
