@@ -1,7 +1,5 @@
 # iac-pulumi
 
-# webapp
-
 ## Repositories
 - Web Application: https://github.com/Jaydoshi171/webapp
 - Infrastructure Code: https://github.com/Jaydoshi171/iac-pulumi 
