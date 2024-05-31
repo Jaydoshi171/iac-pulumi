@@ -1,9 +1,11 @@
 # iac-pulumi
 
-## About
-| Name          | NUID        |
-| ---           | ---         |
-| Jay Doshi     | 002762973   |
+# webapp
+
+## Repositories
+- Web Application: https://github.com/Jaydoshi171/webapp
+- Infrastructure Code: https://github.com/Jaydoshi171/iac-pulumi 
+- Serverless Code: https://github.com/Jaydoshi171/serverless
 
 ## Introduction
 
